@@ -1,294 +1,622 @@
-from pathlib import Path
-
+import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
 
-# Rutas del proyecto
-BASE_DIR = Path(__file__).resolve().parent
-DATASET = BASE_DIR / "superstore_dataset2012.csv"
-OUTPUT_DIR = BASE_DIR / "graficos"
+# ---------------------------------------------------------
+# CONFIGURACIÓN GENERAL
+# ---------------------------------------------------------
 
-# Columnas que vamos a utilizar en el análisis
-COLUMNAS_NECESARIAS = {
-    "Order Date",
-    "Ship Date",
-    "Category",
-    "Segment",
-    "Sales",
-    "Profit",
-    "Quantity",
-    "Discount",
-    "Shipping Cost",
-}
+ARCHIVO_CSV = "superstore_dataset2012.csv"
+CARPETA_GRAFICOS = "graficos"
 
 
-def cargar_datos():
-    """Carga el CSV, comprueba sus columnas y prepara fechas y datos numéricos."""
-    if not DATASET.exists():
-        raise FileNotFoundError(
-            f"No se encontró el archivo '{DATASET.name}'. "
-            "Debe estar en la misma carpeta que este programa."
-        )
+# ---------------------------------------------------------
+# CARGA Y PREPARACIÓN DE DATOS
+# ---------------------------------------------------------
+
+def cargar_datos(nombre_archivo):
+    """
+    Carga el dataset y realiza una preparación básica.
+    """
 
     try:
-        datos = pd.read_csv(DATASET)
-    except (pd.errors.ParserError, UnicodeDecodeError) as error:
-        raise ValueError(f"No se pudo leer correctamente el CSV: {error}") from error
+        df = pd.read_csv(nombre_archivo)
+        print("Dataset cargado correctamente.")
 
-    columnas_faltantes = COLUMNAS_NECESARIAS - set(datos.columns)
-    if columnas_faltantes:
-        raise ValueError(
-            "Faltan columnas necesarias en el dataset: "
-            + ", ".join(sorted(columnas_faltantes))
+    except FileNotFoundError:
+        print(f"Error: no se encontró el archivo '{nombre_archivo}'.")
+        return None
+
+    except Exception as error:
+        print("Se produjo un error al cargar el dataset:")
+        print(error)
+        return None
+
+    return df
+
+
+def preparar_datos(df):
+    """
+    Convierte fechas y variables numéricas al tipo correcto.
+    """
+
+    columnas_necesarias = [
+        "Sales",
+        "Profit",
+        "Discount",
+        "Quantity",
+        "Category",
+        "Segment",
+        "Order Date",
+        "Ship Date"
+    ]
+
+    # Comprobamos que las columnas necesarias existen.
+    for columna in columnas_necesarias:
+        if columna not in df.columns:
+            print(f"Error: falta la columna '{columna}' en el dataset.")
+            return None
+
+    # Convertimos las fechas.
+    # El dataset utiliza formato día/mes/año.
+    df["Order Date"] = pd.to_datetime(
+        df["Order Date"],
+        format="%d/%m/%Y",
+        errors="coerce"
+    )
+
+    df["Ship Date"] = pd.to_datetime(
+        df["Ship Date"],
+        format="%d/%m/%Y",
+        errors="coerce"
+    )
+
+    # Convertimos columnas numéricas.
+    columnas_numericas = [
+        "Sales",
+        "Profit",
+        "Discount",
+        "Quantity"
+    ]
+
+    for columna in columnas_numericas:
+        df[columna] = pd.to_numeric(
+            df[columna],
+            errors="coerce"
         )
 
-    # Las fechas del archivo están guardadas como texto. Las convertimos a datetime.
-    datos["Order Date"] = pd.to_datetime(
-        datos["Order Date"], format="%m/%d/%Y", errors="coerce"
+    # Comprobamos si se generaron fechas nulas.
+    print("\nFechas no válidas encontradas:")
+    print("Order Date:", df["Order Date"].isnull().sum())
+    print("Ship Date:", df["Ship Date"].isnull().sum())
+
+    return df
+
+
+# ---------------------------------------------------------
+# EXPLORACIÓN INICIAL
+# ---------------------------------------------------------
+
+def explorar_datos(df):
+    """
+    Muestra información básica sobre el dataset.
+    """
+
+    print("\n--- PRIMERAS FILAS ---")
+    print(df.head())
+
+    print("\n--- DIMENSIONES DEL DATASET ---")
+    print("Filas:", df.shape[0])
+    print("Columnas:", df.shape[1])
+
+    print("\n--- TIPOS DE DATOS ---")
+    print(df.dtypes)
+
+    print("\n--- VALORES NULOS ---")
+    print(df.isnull().sum())
+
+    print("\n--- ESTADÍSTICAS DESCRIPTIVAS ---")
+    print(df.describe())
+
+
+# ---------------------------------------------------------
+# GRÁFICOS MATPLOTLIB
+# ---------------------------------------------------------
+
+def grafico_histograma(df):
+    """
+    Histograma de ventas con Matplotlib.
+    Permite observar cómo se distribuyen los valores de ventas.
+    """
+
+    plt.figure(figsize=(8, 5))
+
+    plt.hist(
+        df["Sales"].dropna(),
+        bins=30,
+        edgecolor="black"
     )
-    datos["Ship Date"] = pd.to_datetime(
-        datos["Ship Date"], format="%m/%d/%Y", errors="coerce"
-    )
 
-    # Nos aseguramos de que las variables usadas en cálculos sean numéricas.
-    columnas_numericas = ["Sales", "Profit", "Quantity", "Discount", "Shipping Cost"]
-    for columna in columnas_numericas:
-        datos[columna] = pd.to_numeric(datos[columna], errors="coerce")
-
-    return datos
-
-
-def explorar_datos(datos):
-    """Muestra información básica para conocer la estructura y calidad del dataset."""
-    print("\n--- EXPLORACIÓN INICIAL ---")
-    print(f"Filas: {datos.shape[0]}")
-    print(f"Columnas: {datos.shape[1]}")
-
-    print("\nPrimeras 5 filas:")
-    print(datos.head())
-
-    print("\nTipos de datos:")
-    print(datos.dtypes)
-
-    print("\nValores nulos por columna:")
-    print(datos.isnull().sum())
-
-    print("\nResumen de variables numéricas:")
-    print(datos[["Sales", "Profit", "Quantity", "Discount", "Shipping Cost"]].describe())
-
-
-def grafico_univariante_matplotlib(datos):
-    """Histograma de ventas realizado únicamente con Matplotlib."""
-    plt.figure(figsize=(9, 5))
-    plt.hist(datos["Sales"].dropna(), bins=30, edgecolor="black", alpha=0.75)
     plt.title("Distribución de las ventas")
     plt.xlabel("Ventas")
     plt.ylabel("Frecuencia")
+
     plt.tight_layout()
-    plt.savefig(OUTPUT_DIR / "01_histograma_ventas.png", dpi=150)
-
-    # Conclusión: la distribución de Sales está concentrada en importes bajos y
-    # presenta algunos valores de venta mucho más altos que la mayoría.
-
-
-def grafico_univariante_seaborn(datos):
-    """Boxplot de beneficios por categoría realizado con Seaborn."""
-    plt.figure(figsize=(9, 5))
-    sns.boxplot(
-        data=datos,
-        x="Category",
-        y="Profit",
-        hue="Category",
-        palette="Set2",
-        legend=False,
+    plt.savefig(
+        os.path.join(
+            CARPETA_GRAFICOS,
+            "01_histograma_ventas.png"
+        )
     )
-    plt.title("Distribución del beneficio por categoría")
-    plt.xlabel("Categoría")
-    plt.ylabel("Beneficio")
-    plt.tight_layout()
-    plt.savefig(OUTPUT_DIR / "02_boxplot_beneficio_categoria.png", dpi=150)
 
-    # Conclusión: existen operaciones con pérdidas y también valores extremos de
-    # beneficio. El boxplot permite comparar fácilmente la dispersión entre categorías.
+    plt.show()
+
+    # Conclusión:
+    # La mayoría de las ventas se concentran en valores relativamente bajos,
+    # mientras que existen algunas operaciones con importes mucho mayores.
 
 
-def grafico_bivariante_matplotlib(datos):
-    """Relación entre ventas y beneficios mediante un scatter de Matplotlib."""
-    plt.figure(figsize=(9, 5))
-    plt.scatter(datos["Sales"], datos["Profit"], alpha=0.45)
+def grafico_dispersion_matplotlib(df):
+    """
+    Gráfico de dispersión entre ventas y beneficios.
+    """
+
+    plt.figure(figsize=(8, 5))
+
+    plt.scatter(
+        df["Sales"],
+        df["Profit"],
+        alpha=0.5
+    )
+
     plt.title("Relación entre ventas y beneficios")
     plt.xlabel("Ventas")
     plt.ylabel("Beneficio")
-    plt.axhline(0, linewidth=1, linestyle="--")
+
     plt.tight_layout()
-    plt.savefig(OUTPUT_DIR / "03_ventas_vs_beneficio_matplotlib.png", dpi=150)
+    plt.savefig(
+        os.path.join(
+            CARPETA_GRAFICOS,
+            "03_dispersion_sales_profit_matplotlib.png"
+        )
+    )
 
-    # Conclusión: ventas altas no garantizan siempre beneficios positivos. En general
-    # existe una relación positiva moderada, pero aparecen operaciones con pérdidas.
+    plt.show()
+
+    # Conclusión:
+    # En general, las operaciones con mayores ventas pueden generar mayores
+    # beneficios, aunque también existen ventas elevadas con pérdidas.
 
 
-def grafico_bivariante_seaborn(datos):
-    """Regresión entre ventas y beneficios mediante Seaborn."""
-    muestra = datos[["Sales", "Profit"]].dropna()
+def grafico_multivariante_matplotlib(df):
+    """
+    Gráfico multivariante con Matplotlib.
+    Relaciona ventas, beneficio y cantidad.
+    """
+
+    datos = df[
+        ["Sales", "Profit", "Quantity"]
+    ].dropna()
+
+    plt.figure(figsize=(8, 5))
+
+    dispersion = plt.scatter(
+        datos["Sales"],
+        datos["Profit"],
+        s=datos["Quantity"] * 15,
+        alpha=0.5
+    )
+
+    plt.title(
+        "Ventas y beneficio según cantidad de productos"
+    )
+    plt.xlabel("Ventas")
+    plt.ylabel("Beneficio")
+
+    plt.tight_layout()
+
+    plt.savefig(
+        os.path.join(
+            CARPETA_GRAFICOS,
+            "05_multivariante_matplotlib.png"
+        )
+    )
+
+    plt.show()
+
+    # Conclusión:
+    # El tamaño de los puntos representa la cantidad de productos vendidos.
+    # Esto permite observar simultáneamente ventas, beneficio y cantidad.
+
+
+# ---------------------------------------------------------
+# GRÁFICOS SEABORN
+# ---------------------------------------------------------
+
+def grafico_boxplot(df):
+    """
+    Boxplot de beneficio según categoría.
+    """
 
     plt.figure(figsize=(9, 5))
+
+    sns.boxplot(
+        data=df,
+        x="Category",
+        y="Profit"
+    )
+
+    plt.title(
+        "Distribución del beneficio por categoría"
+    )
+    plt.xlabel("Categoría")
+    plt.ylabel("Beneficio")
+
+    plt.tight_layout()
+
+    plt.savefig(
+        os.path.join(
+            CARPETA_GRAFICOS,
+            "02_boxplot_profit_categoria.png"
+        )
+    )
+
+    plt.show()
+
+    # Conclusión:
+    # El boxplot permite comparar la distribución de beneficios entre
+    # categorías y detectar posibles valores atípicos.
+
+
+def grafico_regresion(df):
+    """
+    Gráfico bivariante con línea de regresión.
+    """
+
+    datos = df[
+        ["Sales", "Profit"]
+    ].dropna()
+
+    plt.figure(figsize=(8, 5))
+
     sns.regplot(
-        data=muestra,
+        data=datos,
         x="Sales",
         y="Profit",
-        scatter_kws={"alpha": 0.35},
-        line_kws={"linewidth": 2},
+        scatter_kws={
+            "alpha": 0.4
+        }
     )
-    plt.title("Ventas y beneficios con línea de regresión")
+
+    plt.title(
+        "Relación entre ventas y beneficios"
+    )
     plt.xlabel("Ventas")
     plt.ylabel("Beneficio")
+
     plt.tight_layout()
-    plt.savefig(OUTPUT_DIR / "04_regresion_ventas_beneficio.png", dpi=150)
 
-    # Conclusión: la línea de regresión resume la tendencia positiva entre Sales y
-    # Profit, aunque la dispersión indica que otros factores también influyen.
-
-
-def grafico_multivariante_matplotlib(datos):
-    """Scatter multivariante: ventas, beneficio y descuento con Matplotlib."""
-    muestra = datos[["Sales", "Profit", "Discount"]].dropna()
-
-    plt.figure(figsize=(9, 5))
-    puntos = plt.scatter(
-        muestra["Sales"],
-        muestra["Profit"],
-        c=muestra["Discount"],
-        cmap="viridis",
-        alpha=0.55,
+    plt.savefig(
+        os.path.join(
+            CARPETA_GRAFICOS,
+            "04_regresion_sales_profit.png"
+        )
     )
-    plt.colorbar(puntos, label="Descuento")
-    plt.title("Ventas, beneficios y nivel de descuento")
-    plt.xlabel("Ventas")
-    plt.ylabel("Beneficio")
-    plt.tight_layout()
-    plt.savefig(OUTPUT_DIR / "05_multivariante_matplotlib.png", dpi=150)
 
-    # Conclusión: al añadir Discount como tercera variable se puede observar si los
-    # niveles de descuento están relacionados con zonas de mayor o menor beneficio.
+    plt.show()
+
+    # Conclusión:
+    # La línea de regresión permite observar una tendencia positiva general
+    # entre ventas y beneficio, aunque existe bastante dispersión.
 
 
-def grafico_multivariante_seaborn(datos):
-    """Heatmap de correlaciones entre variables numéricas usando Seaborn."""
-    columnas = ["Sales", "Quantity", "Discount", "Profit", "Shipping Cost"]
-    correlaciones = datos[columnas].corr()
+def grafico_heatmap(df):
+    """
+    Heatmap de correlaciones.
+    """
 
-    plt.figure(figsize=(8, 6))
+    columnas = [
+        "Sales",
+        "Profit",
+        "Quantity",
+        "Discount"
+    ]
+
+    datos = df[columnas].dropna()
+
+    correlacion = datos.corr()
+
+    plt.figure(figsize=(7, 5))
+
     sns.heatmap(
-        correlaciones,
+        correlacion,
         annot=True,
         fmt=".2f",
-        cmap="coolwarm",
-        center=0,
-        square=True,
+        cmap="coolwarm"
     )
-    plt.title("Correlación entre variables numéricas")
+
+    plt.title(
+        "Matriz de correlación"
+    )
+
     plt.tight_layout()
-    plt.savefig(OUTPUT_DIR / "06_heatmap_correlaciones.png", dpi=150)
 
-    # Conclusión: el heatmap permite comparar simultáneamente varias relaciones.
-    # En este dataset Sales y Profit presentan una correlación positiva moderada.
+    plt.savefig(
+        os.path.join(
+            CARPETA_GRAFICOS,
+            "06_heatmap_correlaciones.png"
+        )
+    )
+
+    plt.show()
+
+    # Conclusión:
+    # El heatmap permite comprobar qué variables numéricas presentan
+    # relaciones más fuertes entre sí.
 
 
-def figura_subplots(datos):
-    """Crea una figura 2x2 con cuatro visualizaciones distintas."""
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+# ---------------------------------------------------------
+# SUBPLOTS
+# ---------------------------------------------------------
 
-    # 1. Matplotlib: histograma de ventas
-    axes[0, 0].hist(datos["Sales"].dropna(), bins=30, edgecolor="black", alpha=0.75)
-    axes[0, 0].set_title("Distribución de ventas")
-    axes[0, 0].set_xlabel("Ventas")
-    axes[0, 0].set_ylabel("Frecuencia")
+def crear_subplots(df):
+    """
+    Crea cuatro visualizaciones en una sola figura.
+    """
 
-    # 2. Seaborn: boxplot de beneficio por categoría
+    fig, axes = plt.subplots(
+        2,
+        2,
+        figsize=(14, 10)
+    )
+
+    # ---------------------------------
+    # 1. Histograma de ventas
+    # ---------------------------------
+
+    axes[0, 0].hist(
+        df["Sales"].dropna(),
+        bins=30,
+        edgecolor="black"
+    )
+
+    axes[0, 0].set_title(
+        "Distribución de ventas"
+    )
+
+    axes[0, 0].set_xlabel(
+        "Ventas"
+    )
+
+    axes[0, 0].set_ylabel(
+        "Frecuencia"
+    )
+
+    # ---------------------------------
+    # 2. Beneficio por categoría
+    # ---------------------------------
+
     sns.boxplot(
-        data=datos,
+        data=df,
         x="Category",
         y="Profit",
-        hue="Category",
-        palette="Set2",
-        legend=False,
-        ax=axes[0, 1],
+        ax=axes[0, 1]
     )
-    axes[0, 1].set_title("Beneficio por categoría")
-    axes[0, 1].set_xlabel("Categoría")
-    axes[0, 1].set_ylabel("Beneficio")
 
-    # 3. Matplotlib: ventas frente a beneficio
-    axes[1, 0].scatter(datos["Sales"], datos["Profit"], alpha=0.35)
-    axes[1, 0].axhline(0, linewidth=1, linestyle="--")
-    axes[1, 0].set_title("Ventas frente a beneficio")
-    axes[1, 0].set_xlabel("Ventas")
-    axes[1, 0].set_ylabel("Beneficio")
-
-    # 4. Seaborn: ventas totales por categoría
-    sns.barplot(
-        data=datos,
-        x="Category",
-        y="Sales",
-        estimator="sum",
-        errorbar=None,
-        hue="Category",
-        palette="Set2",
-        legend=False,
-        ax=axes[1, 1],
+    axes[0, 1].set_title(
+        "Beneficio por categoría"
     )
-    axes[1, 1].set_title("Ventas totales por categoría")
-    axes[1, 1].set_xlabel("Categoría")
-    axes[1, 1].set_ylabel("Ventas totales")
 
-    fig.suptitle("Análisis visual de ventas minoristas - Superstore 2012", fontsize=16)
-    fig.tight_layout(rect=[0, 0, 1, 0.96])
-    fig.savefig(OUTPUT_DIR / "07_resumen_subplots.png", dpi=150)
+    axes[0, 1].set_xlabel(
+        "Categoría"
+    )
 
-    # Conclusión general: esta figura permite comparar en una sola vista la
-    # distribución de ventas, la rentabilidad por categoría, la relación entre
-    # ventas y beneficio y el volumen total vendido por categoría.
+    axes[0, 1].set_ylabel(
+        "Beneficio"
+    )
+
+    # ---------------------------------
+    # 3. Ventas frente a beneficio
+    # ---------------------------------
+
+    axes[1, 0].scatter(
+        df["Sales"],
+        df["Profit"],
+        alpha=0.4
+    )
+
+    axes[1, 0].set_title(
+        "Ventas frente a beneficio"
+    )
+
+    axes[1, 0].set_xlabel(
+        "Ventas"
+    )
+
+    axes[1, 0].set_ylabel(
+        "Beneficio"
+    )
+
+    # ---------------------------------
+    # 4. Ventas totales por categoría
+    # ---------------------------------
+
+    ventas_categoria = (
+        df.groupby("Category")["Sales"]
+        .sum()
+        .sort_values(
+            ascending=False
+        )
+    )
+
+    axes[1, 1].bar(
+        ventas_categoria.index,
+        ventas_categoria.values
+    )
+
+    axes[1, 1].set_title(
+        "Ventas totales por categoría"
+    )
+
+    axes[1, 1].set_xlabel(
+        "Categoría"
+    )
+
+    axes[1, 1].set_ylabel(
+        "Ventas totales"
+    )
+
+    # Título general.
+    fig.suptitle(
+        "Resumen del análisis de ventas de Superstore",
+        fontsize=16
+    )
+
+    plt.tight_layout(
+        rect=[0, 0, 1, 0.96]
+    )
+
+    plt.savefig(
+        os.path.join(
+            CARPETA_GRAFICOS,
+            "07_resumen_subplots.png"
+        )
+    )
+
+    plt.show()
+
+    # Conclusión:
+    # Esta figura resume distintos aspectos del dataset:
+    # distribución de ventas, beneficios por categoría,
+    # relación ventas-beneficio y ventas totales por categoría.
 
 
-def mostrar_conclusiones(datos):
-    """Imprime algunos resultados numéricos que respaldan la lectura de los gráficos."""
-    correlacion = datos[["Sales", "Profit"]].corr().loc["Sales", "Profit"]
-    ventas_categoria = datos.groupby("Category")["Sales"].sum().sort_values(ascending=False)
-    porcentaje_perdidas = (datos["Profit"] < 0).mean() * 100
+# ---------------------------------------------------------
+# CONCLUSIONES GENERALES
+# ---------------------------------------------------------
 
-    print("\n--- CONCLUSIONES RESUMIDAS ---")
-    print(f"Correlación Sales-Profit: {correlacion:.2f}")
-    print(f"Operaciones con Profit negativo: {porcentaje_perdidas:.1f}%")
-    print("\nVentas totales por categoría:")
-    print(ventas_categoria.round(2))
+def mostrar_conclusiones(df):
+    """
+    Calcula algunas conclusiones básicas del análisis.
+    """
 
+    correlacion = df[
+        ["Sales", "Profit"]
+    ].corr().iloc[0, 1]
+
+    porcentaje_perdidas = (
+        (df["Profit"] < 0).mean() * 100
+    )
+
+    ventas_categoria = (
+        df.groupby("Category")["Sales"]
+        .sum()
+        .sort_values(
+            ascending=False
+        )
+    )
+
+    print("\n--- CONCLUSIONES GENERALES ---")
+
+    print(
+        f"Correlación entre ventas y beneficio: "
+        f"{correlacion:.2f}"
+    )
+
+    print(
+        f"Porcentaje de operaciones con pérdidas: "
+        f"{porcentaje_perdidas:.2f}%"
+    )
+
+    if not ventas_categoria.empty:
+
+        print(
+            "Categoría con mayores ventas:",
+            ventas_categoria.index[0]
+        )
+
+
+# ---------------------------------------------------------
+# PROGRAMA PRINCIPAL
+# ---------------------------------------------------------
 
 def main():
-    try:
-        datos = cargar_datos()
-        OUTPUT_DIR.mkdir(exist_ok=True)
 
-        # Estilo general para mejorar la apariencia de los gráficos.
-        sns.set_theme(style="whitegrid")
+    # Creamos la carpeta donde se guardarán los gráficos.
+    os.makedirs(
+        CARPETA_GRAFICOS,
+        exist_ok=True
+    )
 
-        explorar_datos(datos)
-        grafico_univariante_matplotlib(datos)
-        grafico_univariante_seaborn(datos)
-        grafico_bivariante_matplotlib(datos)
-        grafico_bivariante_seaborn(datos)
-        grafico_multivariante_matplotlib(datos)
-        grafico_multivariante_seaborn(datos)
-        figura_subplots(datos)
-        mostrar_conclusiones(datos)
+    # Cargamos los datos.
+    df = cargar_datos(
+        ARCHIVO_CSV
+    )
 
-        print(f"\nGráficos guardados correctamente en: {OUTPUT_DIR}")
-        plt.show()
+    if df is None:
+        return
 
-    except (FileNotFoundError, ValueError) as error:
-        print(f"Error: {error}")
+    # Preparamos los datos.
+    df = preparar_datos(
+        df
+    )
+
+    if df is None:
+        return
+
+    # Exploración inicial.
+    explorar_datos(
+        df
+    )
+
+    # Gráficos Matplotlib.
+    grafico_histograma(
+        df
+    )
+
+    grafico_dispersion_matplotlib(
+        df
+    )
+
+    grafico_multivariante_matplotlib(
+        df
+    )
+
+    # Gráficos Seaborn.
+    grafico_boxplot(
+        df
+    )
+
+    grafico_regresion(
+        df
+    )
+
+    grafico_heatmap(
+        df
+    )
+
+    # Figura con cuatro subplots.
+    crear_subplots(
+        df
+    )
+
+    # Conclusiones.
+    mostrar_conclusiones(
+        df
+    )
+
+    print(
+        "\nAnálisis finalizado correctamente."
+    )
+
+    print(
+        f"Los gráficos se han guardado en la carpeta "
+        f"'{CARPETA_GRAFICOS}'."
+    )
 
 
+# Ejecutamos el programa.
 if __name__ == "__main__":
     main()
